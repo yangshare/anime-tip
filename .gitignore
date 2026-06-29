@@ -141,3 +141,12 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Claude Code
+.claude/
+
+# codegraph
+.codegraph/
+
+# IntelliJ / WebStorm / PyCharm
+.idea/
