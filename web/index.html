@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>anime-tip 动漫更新提醒</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body>
+<div class="app" x-data="app()" x-init="init()">
+
+  <header>
+    <h1>🍥 anime-tip</h1>
+    <nav>
+      <a href="#" :class="{ active: tab==='list' }" @click.prevent="tab='list'">关注列表</a>
+      <a href="#" :class="{ active: tab==='search' }" @click.prevent="tab='search'">搜索</a>
+      <a href="#" :class="{ active: tab==='settings' }" @click.prevent="tab='settings'">设置</a>
+      <button class="check-btn" @click="checkNow" :disabled="checking">
+        {{ checking ? '检查中...' : '立即检查' }}
+      </button>
+    </nav>
+  </header>
+
+  <!-- 关注列表 -->
+  <div x-show="tab==='list'">
+    <div class="empty-state" x-show="animes.length===0 && !loading">
+      还没有关注任何动漫，去「搜索」添加吧！
+    </div>
+    <div class="card" x-for="a in animes" :key="a.id">
+      <img :src="a.cover || '/static/placeholder.png'" :alt="a.name">
+      <div class="card-info">
+        <h3 x-text="a.name"></h3>
+        <p x-text="'当前：' + (a.current_remarks || '未知')"></p>
+      </div>
+      <button class="btn-remove" @click="removeAnime(a.id)">取消关注</button>
+    </div>
+  </div>
+
+  <!-- 搜索 -->
+  <div x-show="tab==='search'">
+    <div class="search-bar">
+      <input type="text" x-model="query" placeholder="输入动漫名称搜索..."
+             @keydown.enter="search">
+      <button class="btn-primary" @click="search" :disabled="searching">
+        {{ searching ? '搜索中...' : '搜索' }}
+      </button>
+    </div>
+    <div class="card" x-for="item in searchResults" :key="item.vod_id">
+      <img :src="item.vod_pic" :alt="item.vod_name">
+      <div class="card-info">
+        <h3 x-text="item.vod_name"></h3>
+        <p x-text="(item.vod_remarks || '未知') + ' · ' + (item.vod_area || '')"></p>
+      </div>
+      <button class="btn-follow"
+              @click="followAnime(item)"
+              :disabled="isFollowed(item.vod_id)">
+        {{ isFollowed(item.vod_id) ? '已关注' : '关注' }}
+      </button>
+    </div>
+    <div class="empty-state" x-show="searchResults.length===0 && searched">
+      没有找到相关动漫
+    </div>
+  </div>
+
+  <!-- 设置 -->
+  <div x-show="tab==='settings'">
+    <div class="setting-group">
+      <label>Server 酱 SendKey</label>
+      <input type="password" x-model="settings.server_chan_key" placeholder="输入 Server 酱 SendKey">
+    </div>
+    <button class="btn-primary" @click="saveSettings">保存设置</button>
+  </div>
+
+</div>
+
+<script>
+function app() {
+  return {
+    tab: 'list',
+    animes: [],
+    query: '',
+    searchResults: [],
+    settings: { server_chan_key: '' },
+    loading: false,
+    searching: false,
+    searched: false,
+    checking: false,
+
+    async init() {
+      await this.loadAnimes();
+      await this.loadSettings();
+    },
+
+    async loadAnimes() {
+      this.loading = true;
+      const res = await fetch('/api/animes');
+      const data = await res.json();
+      this.animes = data.data || [];
+      this.loading = false;
+    },
+
+    async search() {
+      if (!this.query.trim()) return;
+      this.searching = true;
+      this.searched = true;
+      const res = await fetch('/api/search?q=' + encodeURIComponent(this.query));
+      const data = await res.json();
+      this.searchResults = data.data || [];
+      this.searching = false;
+    },
+
+    isFollowed(vodId) {
+      return this.animes.some(a => a.vod_id === vodId);
+    },
+
+    async followAnime(item) {
+      const res = await fetch('/api/animes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vod_id: item.vod_id,
+          name: item.vod_name,
+          cover: item.vod_pic,
+          current_remarks: item.vod_remarks || '',
+        }),
+      });
+      if (res.ok) {
+        await this.loadAnimes();
+      } else {
+        const err = await res.json();
+        alert(err.error || '关注失败');
+      }
+    },
+
+    async removeAnime(id) {
+      if (!confirm('确定取消关注？')) return;
+      await fetch('/api/animes/' + id, { method: 'DELETE' });
+      await this.loadAnimes();
+    },
+
+    async loadSettings() {
+      const res = await fetch('/api/settings');
+      const data = await res.json();
+      const list = data.data || [];
+      const map = {};
+      list.forEach(s => { map[s.key] = s.value; });
+      this.settings = { server_chan_key: map.server_chan_key || '' };
+    },
+
+    async saveSettings() {
+      await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(this.settings),
+      });
+      alert('设置已保存');
+    },
+
+    async checkNow() {
+      this.checking = true;
+      await fetch('/api/check', { method: 'POST' });
+      this.checking = false;
+      alert('检查已触发，请稍候查看微信通知');
+    },
+  };
+}
+</script>
+</body>
+</html>
