@@ -69,9 +69,10 @@ func (s *Scheduler) CheckUpdates() error {
 
 	var updates []notify.UpdateItem
 	var toUpdate []struct {
-		id                  int64
-		currentRemarks      string
-		lastNotifiedRemarks string
+		id              int64
+		currentRemarks  string
+		lastRemarks     string
+		lastEpisode     int
 	}
 
 	for _, a := range animes {
@@ -82,9 +83,9 @@ func (s *Scheduler) CheckUpdates() error {
 		}
 
 		latestRemarks := detail.VodRemarks
+		shouldNotify, newRemarks, newEpisode := DecideUpdate(latestRemarks, a.LastNotifiedRemarks, a.LastNotifiedEpisode)
 
-		// 当前记录的 remarks 与上次推送的 remarks 不同，说明有更新
-		if a.LastNotifiedRemarks != "" && latestRemarks != a.LastNotifiedRemarks {
+		if shouldNotify {
 			updates = append(updates, notify.UpdateItem{
 				Name:      a.Name,
 				Remarks:   latestRemarks,
@@ -92,14 +93,14 @@ func (s *Scheduler) CheckUpdates() error {
 			})
 		}
 
-		// 无论是否有变化，都同步 current_remarks；如果上次推送的 remarks 为空（首次关注），不触发通知。
-		// 注意：last_notified_remarks 在发生更新时应推进到 latestRemarks，否则下一轮会因 latest != last_notified 永远成立而重复推送。
-		if latestRemarks != a.CurrentRemarks || a.LastNotifiedRemarks != a.CurrentRemarks {
+		// 仅当基线有变化时才收集更新（避免无谓写库）
+		if newRemarks != a.LastNotifiedRemarks || newEpisode != a.LastNotifiedEpisode {
 			toUpdate = append(toUpdate, struct {
-				id                  int64
-				currentRemarks      string
-				lastNotifiedRemarks string
-			}{a.ID, latestRemarks, latestRemarks})
+				id              int64
+				currentRemarks  string
+				lastRemarks     string
+				lastEpisode     int
+			}{a.ID, latestRemarks, newRemarks, newEpisode})
 		}
 	}
 
@@ -122,7 +123,7 @@ func (s *Scheduler) CheckUpdates() error {
 
 	// 推送成功后更新数据库
 	for _, u := range toUpdate {
-		if err := store.UpdateAnimeRemarks(s.db, u.id, u.currentRemarks, u.lastNotifiedRemarks); err != nil {
+		if err := store.UpdateAnimeRemarks(s.db, u.id, u.currentRemarks, u.lastRemarks, u.lastEpisode); err != nil {
 			log.Printf("[scheduler] 更新动漫 remarks 失败 (id=%d): %v", u.id, err)
 		}
 	}
