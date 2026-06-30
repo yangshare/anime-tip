@@ -2,13 +2,17 @@ package main
 
 import (
 	"flag"
+	"io"
 	"log"
+	"os"
+	"path/filepath"
 
 	"github.com/user/anime-tip/internal/config"
 	"github.com/user/anime-tip/internal/crawler"
 	"github.com/user/anime-tip/internal/scheduler"
 	"github.com/user/anime-tip/internal/store"
 	"github.com/user/anime-tip/internal/web"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 func main() {
@@ -22,6 +26,22 @@ func main() {
 	if err := cfg.Validate(); err != nil {
 		log.Fatalf("配置校验失败: %v", err)
 	}
+
+	// 配置全局日志输出：同时写 stderr（控制台）和按大小轮转的日志文件。
+	// lumberjack 仅按大小触发切割，MaxAge/MaxBackups 是旧文件清理策略。
+	if dir := filepath.Dir(cfg.LogFile); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			log.Fatalf("创建日志目录 %s 失败: %v", dir, err)
+		}
+	}
+	log.SetOutput(io.MultiWriter(os.Stderr, &lumberjack.Logger{
+		Filename:   cfg.LogFile,
+		MaxSize:    10, // MB
+		MaxBackups: 7,
+		MaxAge:     7, // 天
+		LocalTime:  true,
+	}))
+
 	log.Printf("anime-tip starting on :%s", cfg.Port)
 
 	// 初始化数据库
