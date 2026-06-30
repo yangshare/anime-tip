@@ -30,6 +30,7 @@ anime-tip/
 │       └── style.css
 ├── Dockerfile             # 多阶段构建
 ├── docker-compose.yml
+├── Makefile               # 本地构建入口（make build / run / clean）
 ├── config.example.yaml    # 配置文件示例
 ├── go.mod
 └── go.sum
@@ -74,6 +75,20 @@ go run ./cmd/server/
 ```
 
 启动后访问 `http://localhost:8080` 即可打开 Web 管理界面。
+
+> 想要编译后的可执行文件而不是 `go run`？使用 Makefile 统一构建，产物会输出到 `build/` 目录，不会污染项目根目录：
+>
+> ```bash
+> make build      # 编译到 build/anime-tip（Windows 为 build/anime-tip.exe）
+> make run        # 直接 go run，不产出二进制
+> make clean      # 清理 build/ 与运行时日志
+> ```
+>
+> 程序日志通过标准输出打印（标准库 `log` 包）。如需落盘，运行时重定向即可，建议统一放到 `logs/`（已被 `.gitignore` 忽略）：
+>
+> ```bash
+> ./build/anime-tip > logs/server.log 2>&1
+> ```
 
 ### 方式二：Docker Compose 部署
 

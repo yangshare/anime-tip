@@ -159,6 +159,9 @@ anime-tip
 *.test
 *.out
 
+# 本地构建输出目录（make build 产物）
+build/
+
 # SQLite 数据库
 *.db
 
