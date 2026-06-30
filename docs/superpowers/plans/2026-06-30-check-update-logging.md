@@ -1,56 +1,125 @@
-# 检查更新日志增强 实现计划
+# 检查更新日志增强 + 文件轮转 实现计划
 
 > **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
 
-**目标：** 在 `CheckUpdates()` 各关键节点补 stdout 文本日志，使每次检查的时间、规模、失败环节、耗时均可从日志还原。
+**目标：** (1) 在 `CheckUpdates()` 各节点补日志使每次检查可还原；(2) 日志同时输出到 stderr 和按大小轮转的文件，保证事后回溯。
 
-**架构：** 仅修改 `internal/scheduler/scheduler.go` 的 `CheckUpdates()` 方法：在 `TryLock` 成功后埋点 `time.Now()` 并用 `defer` 保证所有退出路径都打印耗时；为关注列表规模、发现更新汇总、推送失败补 log。不引入新依赖（仅标准库 `time`、`strings`）。
+**架构：** 任务 1 已完成——`scheduler.go` 的日志埋点。任务 2-4 新增文件轮转：config 加 `LogFile` 字段、main.go 用 lumberjack + MultiWriter 配置全局 logger。仅用标准库 + lumberjack。
 
-**技术栈：** Go 标准库 `log` / `time` / `strings`，`github.com/robfig/cron/v3`（不动）。
+**技术栈：** Go 标准库 `log`/`io`/`os`/`path/filepath`/`time`/`strings`，`gopkg.in/natefinch/lumberjack.v2`。
 
 **规格：** `docs/superpowers/specs/2026-06-30-check-update-logging-design.md`
 
 ---
 
-## 关于 TDD 的说明（重要）
+## 关于 TDD 的说明
 
-本次变更是**纯日志副作用**：没有新增行为逻辑、没有新分支、没有新返回值、没有新状态。被修改的 `CheckUpdates()` 依赖包级函数 `store.ListAnimes(s.db)`、`store.GetSetting`、`store.UpdateAnimeRemarks` 与具体类型 `*crawler.Client`，无可注入的接口。要单测 log 输出必须：
-1. 把 `crawler.Client` 抽象成接口（扩大规格范围），
-2. 引入 `sqlmock` 或真实内存 sqlite 来 mock 包级 `store.*`（引入新测试基础设施），
-3. 用 `log.SetOutput(&bytes.Buffer{})` 捕获并断言字符串（脆弱测试）。
-
-以上违反规格"非目标"中的 YAGNI 精神与"仅修改 scheduler.go"的范围限定。因此本计划**不走 TDD**，验证采用规格"验证"章节定义的方式：`go build ./...` + `go vet ./...` + 手动触发观察日志输出。这是经审慎判断的取舍，而非遗漏。
+日志埋点为纯副作用、无新行为逻辑，不可单测（强测需引入接口抽象 + sqlmock，违反 YAGNI）。文件轮转同样依赖文件系统副作用与外部库行为，单测脆弱且收益低。验证采用 `go build` + `go vet` + 手动触发观察日志文件。这是经审慎判断的取舍，而非遗漏。
 
 ---
 
 ## 文件结构
 
-- 修改：`internal/scheduler/scheduler.go`
-  - 职责：定时/手动检查动漫更新的核心逻辑。本次仅增强其日志可观测性，不改任何控制流或数据库交互。
-  - 唯一改动文件，无新建文件。
+- `internal/scheduler/scheduler.go` — **已完成**（任务 1），日志埋点。
+- `internal/config/config.go` — 新增 `LogFile` 字段与 `LOG_FILE` 环境变量。
+- `cmd/server/main.go` — 配置 lumberjack + MultiWriter。
 
 ---
 
-## 任务 1：补齐检查过程的日志埋点
+## 任务 1：补齐 CheckUpdates 日志埋点  ✅ 已完成
+
+import 加 `time`/`strings`；TryLock 后埋点 `start` + defer 耗时；ListAnimes 后补"共 N 部"；推送前补发现更新汇总；推送失败补失败日志。已 commit。
+
+---
+
+## 任务 2：config 新增 LogFile 字段
 
 **文件：**
-- 修改：`internal/scheduler/scheduler.go`（import 块第 3-13 行；`CheckUpdates` 方法第 46-116 行）
+- 修改：`internal/config/config.go`（Config 结构体第 12-22 行；默认值第 32-36 行；overrideFromEnv 第 88-115 行）
 
-- [ ] **步骤 1：在 import 块加入 `time` 和 `strings`**
+- [ ] **步骤 1：Config 结构体加 LogFile 字段**
 
-把 `internal/scheduler/scheduler.go` 第 3-13 行的 import 块：
+在 `internal/config/config.go` 的 `DBPath` 字段后（第 18 行之后、`Keke9BaseURL` 之前或之后均可）加入：
+
+```go
+	DBPath        string `yaml:"db_path"`
+	LogFile       string `yaml:"log_file"`
+```
+
+- [ ] **步骤 2：默认值加 LogFile**
+
+把默认值块（第 32-36 行）：
+
+```go
+	cfg := &Config{
+		Port:      "8080",
+		CheckCron: "0 * * * *",
+		DBPath:    "anime-tip.db",
+	}
+```
+
+改为：
+
+```go
+	cfg := &Config{
+		Port:      "8080",
+		CheckCron: "0 * * * *",
+		DBPath:    "anime-tip.db",
+		LogFile:   "logs/anime-tip.log",
+	}
+```
+
+- [ ] **步骤 3：overrideFromEnv 加 LOG_FILE**
+
+在 `overrideFromEnv` 末尾（`DB_PATH` 处理之后，第 114 行之后）加入：
+
+```go
+	if v := os.Getenv("DB_PATH"); v != "" {
+		cfg.DBPath = v
+	}
+	if v := os.Getenv("LOG_FILE"); v != "" {
+		cfg.LogFile = v
+	}
+```
+
+- [ ] **步骤 4：编译验证**
+
+运行：`go build ./...`
+预期：无输出，退出码 0。
+
+- [ ] **步骤 5：Commit**
+
+```bash
+git add internal/config/config.go
+git commit -m "feat(config): 新增 log_file 配置项支持日志路径"
+```
+
+---
+
+## 任务 3：main.go 配置 lumberjack 文件轮转
+
+**文件：**
+- 修改：`cmd/server/main.go`（import 块第 3-12 行；Validate 之后、InitDB 之前 第 24-25 行附近）
+
+- [ ] **步骤 1：go get 引入 lumberjack 依赖**
+
+运行：`go get gopkg.in/natefinch/lumberjack.v2`
+预期：`go: added gopkg.in/natefinch/lumberjack.v2 vX.X.X`，`go.mod` 与 `go.sum` 更新。
+
+- [ ] **步骤 2：import 块加入 io、path/filepath、lumberjack**
+
+把 `cmd/server/main.go` 的 import 块（第 3-12 行）：
 
 ```go
 import (
-	"database/sql"
-	"fmt"
+	"flag"
 	"log"
-	"sync"
 
-	"github.com/robfig/cron/v3"
+	"github.com/user/anime-tip/internal/config"
 	"github.com/user/anime-tip/internal/crawler"
-	"github.com/user/anime-tip/internal/notify"
+	"github.com/user/anime-tip/internal/scheduler"
 	"github.com/user/anime-tip/internal/store"
+	"github.com/user/anime-tip/internal/web"
 )
 ```
 
@@ -58,167 +127,142 @@ import (
 
 ```go
 import (
-	"database/sql"
-	"fmt"
+	"flag"
+	"io"
 	"log"
-	"strings"
-	"sync"
-	"time"
+	"os"
+	"path/filepath"
 
-	"github.com/robfig/cron/v3"
+	"github.com/user/anime-tip/internal/config"
 	"github.com/user/anime-tip/internal/crawler"
-	"github.com/user/anime-tip/internal/notify"
+	"github.com/user/anime-tip/internal/scheduler"
 	"github.com/user/anime-tip/internal/store"
+	"github.com/user/anime-tip/internal/web"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 ```
 
-- [ ] **步骤 2：在 TryLock 成功后埋点开始时间并用 defer 打印耗时**
+- [ ] **步骤 3：在配置校验后配置全局 logger**
 
-定位 `CheckUpdates` 方法开头（约第 46-51 行）：
+定位 `cmd/server/main.go` 中 Validate 之后、`log.Printf("anime-tip starting...")` 附近（第 24-25 行）：
 
 ```go
-func (s *Scheduler) CheckUpdates() error {
-	// 防止并发执行（手动触发 + 定时触发叠加、多次点击）
-	if !s.mu.TryLock() {
-		return fmt.Errorf("检查任务正在执行中，请稍后再试")
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("配置校验失败: %v", err)
 	}
-	defer s.mu.Unlock()
+	log.Printf("anime-tip starting on :%s", cfg.Port)
 ```
 
-紧接 `defer s.mu.Unlock()` 之后插入埋点（注意：必须放在 TryLock 成功之后，这样"任务正在执行中"的提前返回不会打印误导性的耗时日志）：
+在两行之间插入日志初始化：
 
 ```go
-	defer s.mu.Unlock()
-
-	start := time.Now()
-	defer func() {
-		log.Printf("[scheduler] 检查结束，耗时 %s", time.Since(start))
-	}()
-```
-
-- [ ] **步骤 3：在获取关注列表后补"共 N 部"开始日志**
-
-定位约第 53-60 行：
-
-```go
-	animes, err := store.ListAnimes(s.db)
-	if err != nil {
-		return err
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("配置校验失败: %v", err)
 	}
-	if len(animes) == 0 {
-		log.Println("[scheduler] 关注列表为空，跳过检查")
-		return nil
-	}
-```
 
-在 `if err != nil` 块与 `if len(animes) == 0` 块之间插入一行开始日志：
-
-```go
-	animes, err := store.ListAnimes(s.db)
-	if err != nil {
-		return err
-	}
-	log.Printf("[scheduler] 开始检查动漫更新，共 %d 部", len(animes))
-	if len(animes) == 0 {
-		log.Println("[scheduler] 关注列表为空，跳过检查")
-		return nil
-	}
-```
-
-- [ ] **步骤 4：在推送前补"发现 N 部更新"汇总，并在推送失败时补失败日志**
-
-定位约第 98-106 行：
-
-```go
-	// 如果有更新，推送通知
-	if len(updates) > 0 {
-		sendKey, _ := store.GetSetting(s.db, "server_chan_key")
-		sc := notify.NewServerChan(sendKey)
-		if err := sc.Send(updates); err != nil {
-			return err
+	// 配置全局日志输出：同时写 stderr（控制台）和按大小轮转的日志文件。
+	// lumberjack 仅按大小切割，MaxAge/MaxBackups 是旧文件清理策略。
+	if dir := filepath.Dir(cfg.LogFile); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			log.Fatalf("创建日志目录 %s 失败: %v", dir, err)
 		}
-		log.Printf("[scheduler] 推送了 %d 条动漫更新", len(updates))
 	}
+	log.SetOutput(io.MultiWriter(os.Stderr, &lumberjack.Logger{
+		Filename:   cfg.LogFile,
+		MaxSize:    10, // MB
+		MaxBackups: 7,
+		MaxAge:     7, // 天
+		LocalTime:  true,
+	}))
+
+	log.Printf("anime-tip starting on :%s", cfg.Port)
 ```
 
-改为（增加汇总日志、增加推送失败的本地日志留痕）：
-
-```go
-	// 如果有更新，推送通知
-	if len(updates) > 0 {
-		names := make([]string, 0, len(updates))
-		for _, u := range updates {
-			names = append(names, "《"+u.Name+"》")
-		}
-		log.Printf("[scheduler] 发现 %d 部有更新：%s", len(updates), strings.Join(names, " "))
-
-		sendKey, _ := store.GetSetting(s.db, "server_chan_key")
-		sc := notify.NewServerChan(sendKey)
-		if err := sc.Send(updates); err != nil {
-			log.Printf("[scheduler] 推送通知失败: %v", err)
-			return err
-		}
-		log.Printf("[scheduler] 推送了 %d 条动漫更新", len(updates))
-	}
-```
-
-- [ ] **步骤 5：编译验证**
+- [ ] **步骤 4：编译验证**
 
 运行：`go build ./...`
-预期：无输出，退出码 0（编译通过，`time`/`strings` 已被使用，无未使用导入错误）。
+预期：无输出，退出码 0。
 
-- [ ] **步骤 6：静态检查**
+- [ ] **步骤 5：静态检查**
 
 运行：`go vet ./...`
 预期：无输出，退出码 0。
 
-- [ ] **步骤 7：手动触发验证日志输出**
-
-启动服务（需提供有效 `config.yaml` 或环境变量）后，手动触发检查接口：
-
-```
-POST http://localhost:<port>/api/check
-```
-
-（若 `web.SetupRouter` 注册的路径不同，执行者需先在 `internal/web` 下确认 `TriggerCheck` 的实际路由再调用。）
-
-关注日志中应能看到类似序列（成功路径）：
-```
-[scheduler] 开始检查动漫更新，共 N 部
-[scheduler] 发现 X 部有更新：《..》《..》   # 仅当有更新时
-[scheduler] 推送了 X 条动漫更新             # 仅当有更新时
-[scheduler] 检查结束，耗时 1.2s
-```
-
-并人为制造一次失败路径验证留痕（任选其一）：
-- 数据源接口不通：临时把 `vod_base_url` 改成不可达地址触发检查 → 应看到 `[scheduler] 获取动漫 <名> (vod_id=..) 详情失败: ...` 且末尾仍有 `检查结束，耗时 ...`。
-- 推送不通：临时清空 `server_chan_key`（或填错值）并在有更新时触发 → 应看到 `[scheduler] 推送通知失败: ...` 且末尾仍有耗时日志。
-
-确认：失败分支同样打印耗时日志（因步骤 2 用了 defer），且失败原因清晰可见。
-
-- [ ] **步骤 8：Commit**
+- [ ] **步骤 6：Commit**
 
 ```bash
-git add internal/scheduler/scheduler.go
-git commit -m "feat(scheduler): 增强检查更新的过程日志与耗时统计"
+git add cmd/server/main.go go.mod go.sum
+git commit -m "feat(log): 日志双写 stderr 与 lumberjack 轮转文件"
 ```
+
+---
+
+## 任务 4：手动触发验证（文件 + 日志内容）
+
+**文件：** 无代码改动。
+
+- [ ] **步骤 1：启动服务**
+
+运行：`go run ./cmd/server`
+预期：服务启动；项目根目录下 `logs/anime-tip.log` 被创建。
+
+- [ ] **步骤 2：触发检查并核对日志文件**
+
+调用 `POST http://localhost:<端口>/api/check`，然后查看 `logs/anime-tip.log`，确认包含：
+```
+[scheduler] 开始检查动漫更新，共 N 部
+[scheduler] 检查结束，耗时 ...
+```
+且文件内容与控制台一致。
+
+- [ ] **步骤 3：（可选）验证失败分支写入文件**
+
+任选：
+- 临时把 `vod_base_url` 改成不可达地址 → 日志文件应含 `获取动漫 ... 详情失败: ...` + 末尾 `检查结束，耗时 ...`。
+- 把 `server_chan_key` 清空并在有更新时触发 → 日志文件应含 `推送通知失败: ...` + 末尾耗时。
+
+- [ ] **步骤 4：确认日志目录已被 .gitignore 忽略（避免误提交日志）**
+
+检查 `.gitignore` 是否忽略 `logs/`；若否，补一条 `logs/` 并单独提交（见任务 5）。
+
+---
+
+## 任务 5：忽略日志目录（如需）
+
+**文件：** `.gitignore`
+
+- [ ] **步骤 1：检查并补充**
+
+查看 `.gitignore`，若未忽略 `logs/`，追加：
+
+```
+logs/
+```
+
+- [ ] **步骤 2：Commit（若有改动）**
+
+```bash
+git add .gitignore
+git commit -m "chore: 忽略 logs/ 日志目录"
+```
+若无改动则跳过。
 
 ---
 
 ## 自检结果
 
 **1. 规格覆盖度：**
-- "开始检查 补关注列表数量" → 任务 1 步骤 3 ✓
-- "单部抓取失败 已有 log 保持" → 不需改动，已在现状中 ✓
-- "单部抓取成功但无变化 不记" → 不需改动（本就不记）✓
-- "发现更新汇总" → 任务 1 步骤 4（汇总日志）✓
-- "推送失败 补明确失败 log" → 任务 1 步骤 4（`推送通知失败` log）✓
-- "检查结束 补耗时" → 任务 1 步骤 2（defer 耗时）✓
-- 取舍 1/2/3 → 步骤 4（不记无变化）、步骤 4（推送失败留痕）、步骤 2（time.Since 耗时）✓
-- 非目标（不引入日志库/不落库/不写文件）→ 计划仅用标准库，无新建文件 ✓
+- 埋点各节点 → 任务 1（已完成）✓
+- 文件轮转：config 字段 → 任务 2 ✓；main 配置 MultiWriter + lumberjack → 任务 3 ✓
+- 默认路径 `logs/anime-tip.log` → 任务 2 步骤 2 ✓
+- 参数硬编码 MaxSize=10/Backups=7/Age=7 → 任务 3 步骤 3 ✓
+- MkdirAll 确保目录 → 任务 3 步骤 3 ✓
+- 配置阶段走 stderr 的时机取舍 → 任务 3 步骤 3 注释 + log.Fatalf 仍默认输出 ✓
+- 验证（build/vet/手动/文件创建）→ 任务 2/3/4 ✓
+- 非目标（不配参数化、不引 zap）→ 计划未引入 ✓
 
-**2. 占位符扫描：** 无 TODO/待定；所有代码步骤均含完整代码块；路由路径的提示已说明由执行者确认而非留空。✓
+**2. 占位符扫描：** 无 TODO/待定；所有代码步骤含完整代码块；轮转参数为具体数值。✓
 
-**3. 类型一致性：** `updates []notify.UpdateItem`、`u.Name`、`names []string`、`strings.Join`、`time.Since(start)` 均与现有代码及标准库签名一致；`start := time.Now()` 仅在步骤 2 定义，步骤 2 的 defer 引用一致。✓
+**3. 类型一致性：** `cfg.LogFile` 在任务 2 定义，任务 3 引用一致；`lumberjack.Logger` 字段名（Filename/MaxSize/MaxBackups/MaxAge/LocalTime）与库 v2 API 一致；`io.MultiWriter`、`filepath.Dir`、`os.MkdirAll` 签名正确。✓
 
 无遗漏，无矛盾。

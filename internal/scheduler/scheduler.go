@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/robfig/cron/v3"
 	"github.com/user/anime-tip/internal/crawler"
@@ -50,10 +52,16 @@ func (s *Scheduler) CheckUpdates() error {
 	}
 	defer s.mu.Unlock()
 
+	start := time.Now()
+	defer func() {
+		log.Printf("[scheduler] 检查结束，耗时 %s", time.Since(start))
+	}()
+
 	animes, err := store.ListAnimes(s.db)
 	if err != nil {
 		return err
 	}
+	log.Printf("[scheduler] 开始检查动漫更新，共 %d 部", len(animes))
 	if len(animes) == 0 {
 		log.Println("[scheduler] 关注列表为空，跳过检查")
 		return nil
@@ -97,9 +105,16 @@ func (s *Scheduler) CheckUpdates() error {
 
 	// 如果有更新，推送通知
 	if len(updates) > 0 {
+		names := make([]string, 0, len(updates))
+		for _, u := range updates {
+			names = append(names, "《"+u.Name+"》")
+		}
+		log.Printf("[scheduler] 发现 %d 部有更新：%s", len(updates), strings.Join(names, " "))
+
 		sendKey, _ := store.GetSetting(s.db, "server_chan_key")
 		sc := notify.NewServerChan(sendKey)
 		if err := sc.Send(updates); err != nil {
+			log.Printf("[scheduler] 推送通知失败: %v", err)
 			return err
 		}
 		log.Printf("[scheduler] 推送了 %d 条动漫更新", len(updates))
