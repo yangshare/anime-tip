@@ -16,6 +16,7 @@ type Config struct {
 	VodBaseURL    string `yaml:"vod_base_url"`
 	VodDetailURL  string `yaml:"vod_detail_url"`
 	DBPath        string `yaml:"db_path"`
+	LogFile       string `yaml:"log_file"`
 	// Keke9BaseURL 旧版（keke9 数据源）配置键的兼容别名，
 	// 仅用于平滑迁移：未显式设置 vod_base_url 时回退到该值。新配置请用 vod_base_url。
 	Keke9BaseURL string `yaml:"keke9_base_url"`
@@ -33,6 +34,7 @@ func Load(configPath string) (*Config, error) {
 		Port:      "8080",
 		CheckCron: "0 * * * *",
 		DBPath:    "anime-tip.db",
+		LogFile:   "logs/anime-tip.log",
 	}
 
 	// 2. 从 YAML 配置文件读取
@@ -111,6 +113,9 @@ func overrideFromEnv(cfg *Config) {
 	}
 	if v := os.Getenv("DB_PATH"); v != "" {
 		cfg.DBPath = v
+	}
+	if v := os.Getenv("LOG_FILE"); v != "" {
+		cfg.LogFile = v
 	}
 }
 
