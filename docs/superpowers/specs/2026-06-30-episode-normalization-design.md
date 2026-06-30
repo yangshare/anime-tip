@@ -129,10 +129,12 @@ func DecideUpdate(latestRemarks, baseRemarks string, baseEpisode int) (shouldNot
 情况 A：newOk == true（本轮解析出集数）
     if baseEpisode > 0 且 newEp > baseEpisode:
         → shouldNotify = true（集数前进）
+        → 基线推进：newRemarks = latestRemarks, newEpisode = newEp
     else:
         → shouldNotify = false（集数相等 / 回退 / 抖动，均不推）
-    newRemarks  = latestRemarks
-    newEpisode  = newEp
+        → 基线保持不变：newRemarks = baseRemarks, newEpisode = baseEpisode
+          （若推进到 newEp，回退后下一轮 newEp' > newEp 会误报，
+           故只有「严格前进」才推进基线）
 
 情况 B：newOk == false（解析不出，如「完结」「HD」）
     if baseRemarks != "" 且 latestRemarks != baseRemarks:
