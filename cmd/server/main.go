@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 
 	"github.com/user/anime-tip/internal/config"
@@ -11,7 +12,13 @@ import (
 )
 
 func main() {
-	cfg := config.Load()
+	configPath := flag.String("config", "", "配置文件路径（默认 config.yaml，可用 CONFIG_PATH 环境变量覆盖）")
+	flag.Parse()
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		log.Fatalf("加载配置失败: %v", err)
+	}
 	log.Printf("anime-tip starting on :%s", cfg.Port)
 
 	// 初始化数据库
@@ -21,7 +28,7 @@ func main() {
 	}
 	defer db.Close()
 
-	// 如果环境变量有 Server Chan Key，写入 settings
+	// 如果配置中有 Server Chan Key，写入 settings（支持配置文件和环境变量两种来源）
 	if cfg.ServerChanKey != "" {
 		if err := store.SetSetting(db, "server_chan_key", cfg.ServerChanKey); err != nil {
 			log.Printf("警告: 写入 server_chan_key 失败: %v", err)

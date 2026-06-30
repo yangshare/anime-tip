@@ -148,5 +148,21 @@ vite.config.ts.timestamp-*
 # codegraph
 .codegraph/
 
+# Go
+anime-tip          # 编译产物
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# SQLite 数据库
+*.db
+
+# anime-tip 配置文件（含敏感信息，不应提交）
+config.yaml
+
 # IntelliJ / WebStorm / PyCharm
 .idea/
