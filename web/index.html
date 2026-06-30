@@ -69,7 +69,11 @@
   <div x-show="tab==='settings'">
     <div class="setting-group">
       <label>Server 酱 SendKey</label>
-      <input type="password" x-model="settings.server_chan_key" placeholder="输入 Server 酱 SendKey">
+      <div class="setting-row">
+        <input type="password" x-model="settings.server_chan_key" placeholder="输入 Server 酱 SendKey">
+        <button class="btn-test" @click="testNotify" :disabled="testingNotify" x-text="testingNotify ? '测试中...' : '测试通知'"></button>
+      </div>
+      <p class="test-result" x-show="notifyResult" :class="notifyOk ? 'success' : 'fail'" x-text="notifyResult"></p>
     </div>
     <button class="btn-primary" @click="saveSettings">保存设置</button>
   </div>
@@ -88,6 +92,9 @@ function app() {
     searching: false,
     searched: false,
     checking: false,
+    testingNotify: false,
+    notifyResult: '',
+    notifyOk: false,
 
     async init() {
       await this.loadAnimes();
@@ -164,6 +171,32 @@ function app() {
       await fetch('/api/check', { method: 'POST' });
       this.checking = false;
       alert('检查已触发，请稍候查看微信通知');
+    },
+
+    async testNotify() {
+      this.testingNotify = true;
+      this.notifyResult = '';
+      try {
+        // 测试前先保存设置：服务端需从数据库读取 SendKey，必须先落库才能验证。
+        const saveRes = await fetch('/api/settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.settings),
+        });
+        if (!saveRes.ok) {
+          throw new Error('保存设置失败 (HTTP ' + saveRes.status + ')');
+        }
+
+        const res = await fetch('/api/notify/test', { method: 'POST' });
+        const data = await res.json();
+        this.notifyOk = data.ok;
+        this.notifyResult = data.ok ? '✅ ' + data.detail : '❌ ' + data.detail;
+      } catch (e) {
+        this.notifyOk = false;
+        this.notifyResult = '❌ 请求失败: ' + e.message;
+      } finally {
+        this.testingNotify = false;
+      }
     },
   };
 }

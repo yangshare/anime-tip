@@ -5,13 +5,20 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/user/anime-tip/internal/crawler"
+	"github.com/user/anime-tip/internal/notify"
 	"github.com/user/anime-tip/internal/scheduler"
 )
 
+// notifier 抽象通知渠道，便于在 handler 层注入测试替身。
+type notifier interface {
+	Ping() error
+}
+
 type Handler struct {
-	db        *sql.DB
-	crawler   *crawler.Client
-	scheduler *scheduler.Scheduler
+	db          *sql.DB
+	crawler     *crawler.Client
+	scheduler   *scheduler.Scheduler
+	newNotifier func(sendKey string) notifier // 默认走 ServerChan，测试可注入
 }
 
 func NewHandler(db *sql.DB, crawler *crawler.Client, sched *scheduler.Scheduler) *Handler {
@@ -19,6 +26,9 @@ func NewHandler(db *sql.DB, crawler *crawler.Client, sched *scheduler.Scheduler)
 		db:        db,
 		crawler:   crawler,
 		scheduler: sched,
+		newNotifier: func(sendKey string) notifier {
+			return notify.NewServerChan(sendKey)
+		},
 	}
 }
 
@@ -38,6 +48,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 		api.PUT("/settings", h.UpdateSettings)
 
 		api.POST("/check", h.TriggerCheck)
+		api.POST("/notify/test", h.TestNotify)
 	}
 }
 

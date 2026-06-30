@@ -137,3 +137,32 @@ input:focus { border-color: #8b5cf6; }
   margin-left: 12px;
 }
 .check-btn:hover { background: #8b5cf6; color: #fff; }
+
+.setting-row {
+  display: flex;
+  gap: 10px;
+}
+.setting-row input { flex: 1; }
+
+.btn-test {
+  background: transparent;
+  border: 1px solid #8b5cf6;
+  color: #8b5cf6;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+.btn-test:hover { background: #8b5cf6; color: #fff; }
+.btn-test:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.test-result {
+  font-size: 13px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+.test-result.success { background: #064e3b; color: #6ee7b7; }
+.test-result.fail { background: #450a0a; color: #fca5a5; }
