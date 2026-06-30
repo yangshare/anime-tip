@@ -4,13 +4,13 @@ services:
   anime-tip:
     build: .
     ports:
-      - "8080:8080"
+      - "8484:8484"
     volumes:
       - anime-tip-data:/data
     environment:
-      - PORT=8080
+      - PORT=8484
       - CHECK_INTERVAL=0 * * * *
-      - SERVER_CHAN_KEY=
+      - SERVER_CHAN_KEY=SCT68495Tz7rzw13yPKNWDPoSEOzGw8mq
       - VOD_BASE_URL=https://cj.lziapi.com
     restart: unless-stopped
 
