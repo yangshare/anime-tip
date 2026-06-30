@@ -198,3 +198,21 @@ func TestLoad_checkCronOverridesAlias(t *testing.T) {
 		t.Errorf("期望 CHECK_CRON 优先于 CHECK_INTERVAL，得到 %s", cfg.CheckCron)
 	}
 }
+
+func TestValidate_portValid(t *testing.T) {
+	cases := []string{"1", "8080", "65535"}
+	for _, p := range cases {
+		if err := (&Config{Port: p}).Validate(); err != nil {
+			t.Errorf("端口 %s 应合法，得到: %v", p, err)
+		}
+	}
+}
+
+func TestValidate_portInvalid(t *testing.T) {
+	cases := []string{"0", "65536", "999999", "abc", "-1", ""}
+	for _, p := range cases {
+		if err := (&Config{Port: p}).Validate(); err == nil {
+			t.Errorf("端口 %q 应非法，但 Validate 返回 nil", p)
+		}
+	}
+}

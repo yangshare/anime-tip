@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/goccy/go-yaml"
 )
@@ -89,4 +90,16 @@ func overrideFromEnv(cfg *Config) {
 	if v := os.Getenv("DB_PATH"); v != "" {
 		cfg.DBPath = v
 	}
+}
+
+// Validate 校验配置项合法性，在启动早期暴露明显的配置错误。
+func (c *Config) Validate() error {
+	port, err := strconv.Atoi(c.Port)
+	if err != nil {
+		return fmt.Errorf("端口 %q 不是合法数字: %w", c.Port, err)
+	}
+	if port < 1 || port > 65535 {
+		return fmt.Errorf("端口 %d 超出有效范围 1-65535", port)
+	}
+	return nil
 }

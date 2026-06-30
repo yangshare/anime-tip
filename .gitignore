@@ -149,7 +149,8 @@ vite.config.ts.timestamp-*
 .codegraph/
 
 # Go
-anime-tip          # 编译产物
+# 编译产物
+anime-tip
 *.exe
 *.exe~
 *.dll

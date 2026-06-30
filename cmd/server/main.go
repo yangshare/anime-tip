@@ -19,6 +19,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("加载配置失败: %v", err)
 	}
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("配置校验失败: %v", err)
+	}
 	log.Printf("anime-tip starting on :%s", cfg.Port)
 
 	// 初始化数据库
