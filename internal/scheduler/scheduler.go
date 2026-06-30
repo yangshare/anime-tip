@@ -73,14 +73,14 @@ func (s *Scheduler) CheckUpdates() error {
 			continue
 		}
 
-		latestRemarks := detail.Info.VodRemarks
+		latestRemarks := detail.VodRemarks
 
 		// 当前记录的 remarks 与上次推送的 remarks 不同，说明有更新
 		if a.LastNotifiedRemarks != "" && latestRemarks != a.LastNotifiedRemarks {
 			updates = append(updates, notify.UpdateItem{
 				Name:      a.Name,
 				Remarks:   latestRemarks,
-				DetailURL: s.crawler.BaseURL + detail.Info.VodLink,
+				DetailURL: s.crawler.DetailURL(a.VodID),
 			})
 		}
 

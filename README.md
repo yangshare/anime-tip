@@ -4,7 +4,7 @@
 
 ## 特性
 
-- 🔍 **动漫搜索**：从可可动漫（keke9）数据源搜索动漫
+- 🔍 **动漫搜索**：从苹果 CMS（provide/vod 协议）数据源搜索动漫
 - 📌 **关注管理**：添加/移除关注，实时查看更新进度
 - ⏰ **定时检查**：Cron 定时轮询，检测到更新自动推送
 - 📬 **微信通知**：通过 Server 酱将更新推送到微信
@@ -18,8 +18,8 @@ anime-tip/
 │   └── main.go
 ├── internal/
 │   ├── config/            # 配置加载（YAML 文件 + 环境变量）
-│   ├── crawler/           # keke9 API 爬虫客户端
-│   ├── model/             # 数据模型（Anime、Keke9 API 响应）
+│   ├── crawler/           # 数据源爬虫客户端（苹果 CMS provide/vod）
+│   ├── model/             # 数据模型（Anime、Vod API 响应）
 │   ├── notify/            # Server 酱推送
 │   ├── scheduler/         # Cron 定时调度器
 │   ├── store/             # SQLite 数据库操作
@@ -148,7 +148,8 @@ export CONFIG_PATH=/path/to/config.yaml
 | `PORT` | `8080` | HTTP 服务监听端口 |
 | `CHECK_CRON` | `0 * * * *` | Cron 表达式，控制定时检查频率（默认每小时整点）。`CHECK_INTERVAL` 为兼容别名，等价生效 |
 | `SERVER_CHAN_KEY` | （空） | Server 酱 SendKey，用于推送微信通知 |
-| `KEKE9_BASE_URL` | `https://www.keke9.com` | 可可动漫 API 地址 |
+| `VOD_BASE_URL` | `https://cj.lziapi.com` | 动漫数据源 API 地址（苹果 CMS provide/vod 协议）。`KEKE9_BASE_URL` 为旧版兼容别名，未设 `VOD_BASE_URL` 时生效 |
+| `VOD_DETAIL_URL` | （空，使用内置模板） | 详情页地址模板，占位符 `{base}`、`{id}` |
 | `DB_PATH` | `anime-tip.db` | SQLite 数据库文件路径 |
 
 ### config.yaml 配置项
@@ -157,7 +158,7 @@ export CONFIG_PATH=/path/to/config.yaml
 port: "8080"
 check_cron: "0 * * * *"
 server_chan_key: ""               # Server 酱 SendKey
-keke9_base_url: "https://www.keke9.com"
+vod_base_url: "https://cj.lziapi.com"   # 数据源 API 地址
 db_path: "anime-tip.db"
 ```
 

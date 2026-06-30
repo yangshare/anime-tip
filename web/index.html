@@ -16,8 +16,7 @@
       <a href="#" :class="{ active: tab==='list' }" @click.prevent="tab='list'">关注列表</a>
       <a href="#" :class="{ active: tab==='search' }" @click.prevent="tab='search'">搜索</a>
       <a href="#" :class="{ active: tab==='settings' }" @click.prevent="tab='settings'">设置</a>
-      <button class="check-btn" @click="checkNow" :disabled="checking">
-        {{ checking ? '检查中...' : '立即检查' }}
+      <button class="check-btn" @click="checkNow" :disabled="checking" x-text="checking ? '检查中...' : '立即检查'">
       </button>
     </nav>
   </header>
@@ -27,14 +26,16 @@
     <div class="empty-state" x-show="animes.length===0 && !loading">
       还没有关注任何动漫，去「搜索」添加吧！
     </div>
-    <div class="card" x-for="a in animes" :key="a.id">
-      <img :src="a.cover || '/static/placeholder.png'" :alt="a.name">
-      <div class="card-info">
-        <h3 x-text="a.name"></h3>
-        <p x-text="'当前：' + (a.current_remarks || '未知')"></p>
+    <template x-for="a in animes" :key="a.id">
+      <div class="card">
+        <img :src="a.cover || '/static/placeholder.png'" :alt="a.name">
+        <div class="card-info">
+          <h3 x-text="a.name"></h3>
+          <p x-text="'当前：' + (a.current_remarks || '未知')"></p>
+        </div>
+        <button class="btn-remove" @click="removeAnime(a.id)">取消关注</button>
       </div>
-      <button class="btn-remove" @click="removeAnime(a.id)">取消关注</button>
-    </div>
+    </template>
   </div>
 
   <!-- 搜索 -->
@@ -42,22 +43,23 @@
     <div class="search-bar">
       <input type="text" x-model="query" placeholder="输入动漫名称搜索..."
              @keydown.enter="search">
-      <button class="btn-primary" @click="search" :disabled="searching">
-        {{ searching ? '搜索中...' : '搜索' }}
+      <button class="btn-primary" @click="search" :disabled="searching" x-text="searching ? '搜索中...' : '搜索'">
       </button>
     </div>
-    <div class="card" x-for="item in searchResults" :key="item.vod_id">
-      <img :src="item.vod_pic" :alt="item.vod_name">
-      <div class="card-info">
-        <h3 x-text="item.vod_name"></h3>
-        <p x-text="(item.vod_remarks || '未知') + ' · ' + (item.vod_area || '')"></p>
+    <template x-for="item in searchResults" :key="item.vod_id">
+      <div class="card">
+        <img :src="item.vod_pic" :alt="item.vod_name">
+        <div class="card-info">
+          <h3 x-text="item.vod_name"></h3>
+          <p x-text="(item.vod_remarks || '未知') + ' · ' + (item.vod_area || '')"></p>
+        </div>
+        <button class="btn-follow"
+                @click="followAnime(item)"
+                :disabled="isFollowed(item.vod_id)"
+                x-text="isFollowed(item.vod_id) ? '已关注' : '关注'">
+        </button>
       </div>
-      <button class="btn-follow"
-              @click="followAnime(item)"
-              :disabled="isFollowed(item.vod_id)">
-        {{ isFollowed(item.vod_id) ? '已关注' : '关注' }}
-      </button>
-    </div>
+    </template>
     <div class="empty-state" x-show="searchResults.length===0 && searched">
       没有找到相关动漫
     </div>

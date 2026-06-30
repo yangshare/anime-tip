@@ -38,8 +38,8 @@ func main() {
 		}
 	}
 
-	// 初始化 keke9 爬虫客户端
-	cr := crawler.NewClient(cfg.Keke9BaseURL)
+	// 初始化数据源爬虫客户端（苹果 CMS provide/vod 协议）
+	cr := crawler.NewClient(cfg.VodBaseURL, cfg.VodDetailURL)
 
 	// 初始化定时调度器
 	sched := scheduler.New(db, cr)

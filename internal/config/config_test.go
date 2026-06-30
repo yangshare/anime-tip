@@ -33,8 +33,8 @@ func TestLoad_defaultFileMissing(t *testing.T) {
 	if cfg.CheckCron != "0 * * * *" {
 		t.Errorf("CheckCron 期望默认值，得到 %s", cfg.CheckCron)
 	}
-	if cfg.Keke9BaseURL != "https://www.keke9.com" {
-		t.Errorf("Keke9BaseURL 期望默认值，得到 %s", cfg.Keke9BaseURL)
+	if cfg.VodBaseURL != "https://cj.lziapi.com" {
+		t.Errorf("VodBaseURL 期望默认值 https://cj.lziapi.com，得到 %s", cfg.VodBaseURL)
 	}
 	if cfg.DBPath != "anime-tip.db" {
 		t.Errorf("DBPath 期望默认值，得到 %s", cfg.DBPath)
@@ -46,7 +46,7 @@ func TestLoad_defaultFileMissing(t *testing.T) {
 
 // YAML 覆盖默认值。
 func TestLoad_yamlOverridesDefaults(t *testing.T) {
-	p := writeTempConfig(t, "port: \"9090\"\ncheck_cron: \"*/30 * * * *\"\nserver_chan_key: \"yaml-key\"\nkeke9_base_url: \"https://example.com\"\ndb_path: \"/data/anime-tip.db\"\n")
+	p := writeTempConfig(t, "port: \"9090\"\ncheck_cron: \"*/30 * * * *\"\nserver_chan_key: \"yaml-key\"\nvod_base_url: \"https://example.com\"\ndb_path: \"/data/anime-tip.db\"\n")
 
 	cfg, err := Load(p)
 	if err != nil {
@@ -61,8 +61,8 @@ func TestLoad_yamlOverridesDefaults(t *testing.T) {
 	if cfg.ServerChanKey != "yaml-key" {
 		t.Errorf("ServerChanKey 期望 yaml-key，得到 %s", cfg.ServerChanKey)
 	}
-	if cfg.Keke9BaseURL != "https://example.com" {
-		t.Errorf("Keke9BaseURL 期望 https://example.com，得到 %s", cfg.Keke9BaseURL)
+	if cfg.VodBaseURL != "https://example.com" {
+		t.Errorf("VodBaseURL 期望 https://example.com，得到 %s", cfg.VodBaseURL)
 	}
 	if cfg.DBPath != "/data/anime-tip.db" {
 		t.Errorf("DBPath 期望 /data/anime-tip.db，得到 %s", cfg.DBPath)
@@ -214,5 +214,43 @@ func TestValidate_portInvalid(t *testing.T) {
 		if err := (&Config{Port: p}).Validate(); err == nil {
 			t.Errorf("端口 %q 应非法，但 Validate 返回 nil", p)
 		}
+	}
+}
+
+// 旧版 keke9_base_url YAML 键在未设 vod_base_url 时作为兼容别名生效。
+func TestLoad_keke9BaseUrlYamlAlias(t *testing.T) {
+	p := writeTempConfig(t, "keke9_base_url: \"https://legacy.example.com\"\n")
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("期望无错，得到: %v", err)
+	}
+	if cfg.VodBaseURL != "https://legacy.example.com" {
+		t.Errorf("期望 keke9_base_url 别名回填到 VodBaseURL，得到 %s", cfg.VodBaseURL)
+	}
+}
+
+// KEKE9_BASE_URL 环境变量在未设 VOD_BASE_URL 时作为兼容别名生效。
+func TestLoad_keke9BaseUrlEnvAlias(t *testing.T) {
+	t.Setenv("VOD_BASE_URL", "")
+	t.Setenv("KEKE9_BASE_URL", "https://env-legacy.example.com")
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("期望无错，得到: %v", err)
+	}
+	if cfg.VodBaseURL != "https://env-legacy.example.com" {
+		t.Errorf("期望 KEKE9_BASE_URL 别名回填到 VodBaseURL，得到 %s", cfg.VodBaseURL)
+	}
+}
+
+// VOD_BASE_URL 优先级高于 KEKE9_BASE_URL 别名。
+func TestLoad_vodBaseUrlEnvPreferredOverAlias(t *testing.T) {
+	t.Setenv("VOD_BASE_URL", "https://primary.example.com")
+	t.Setenv("KEKE9_BASE_URL", "https://legacy.example.com")
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("期望无错，得到: %v", err)
+	}
+	if cfg.VodBaseURL != "https://primary.example.com" {
+		t.Errorf("期望 VOD_BASE_URL 优先，得到 %s", cfg.VodBaseURL)
 	}
 }

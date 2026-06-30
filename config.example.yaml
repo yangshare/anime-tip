@@ -18,9 +18,15 @@ check_cron: "0 * * * *"
 # 获取方式：https://sct.ftqq.com 登录后获取
 server_chan_key: ""
 
-# 可可动漫 API 地址（一般不需要修改）
-# 环境变量：KEKE9_BASE_URL
-keke9_base_url: "https://www.keke9.com"
+# 动漫数据源 API 地址（苹果 CMS provide/vod 采集协议，一般不需要修改）
+# 环境变量：VOD_BASE_URL（旧版 KEKE9_BASE_URL 作为兼容别名仍可用）
+# 该源失效时可替换为任意支持 provide/vod 协议的采集站根地址。
+vod_base_url: "https://cj.lziapi.com"
+
+# 详情页地址模板（用于通知中的可点击链接，通常留空使用默认）
+# 占位符：{base}=数据源根地址，{id}=vod_id
+# 环境变量：VOD_DETAIL_URL
+# vod_detail_url: "{base}/index.php/vod/detail/id/{id}.html"
 
 # SQLite 数据库文件路径
 # 环境变量：DB_PATH

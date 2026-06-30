@@ -11,7 +11,7 @@ services:
       - PORT=8080
       - CHECK_INTERVAL=0 * * * *
       - SERVER_CHAN_KEY=
-      - KEKE9_BASE_URL=https://www.keke9.com
+      - VOD_BASE_URL=https://cj.lziapi.com
     restart: unless-stopped
 
 volumes:
