@@ -8,7 +8,7 @@ import (
 )
 
 func ListAnimes(db *sql.DB) ([]model.Anime, error) {
-	rows, err := db.Query(`SELECT id, vod_id, name, cover, current_remarks, last_notified_remarks, created_at FROM animes ORDER BY created_at DESC`)
+	rows, err := db.Query(`SELECT id, vod_id, name, cover, current_remarks, last_notified_remarks, last_notified_episode, created_at FROM animes ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("query animes: %w", err)
 	}
@@ -17,7 +17,7 @@ func ListAnimes(db *sql.DB) ([]model.Anime, error) {
 	var animes []model.Anime
 	for rows.Next() {
 		var a model.Anime
-		if err := rows.Scan(&a.ID, &a.VodID, &a.Name, &a.Cover, &a.CurrentRemarks, &a.LastNotifiedRemarks, &a.CreatedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.VodID, &a.Name, &a.Cover, &a.CurrentRemarks, &a.LastNotifiedRemarks, &a.LastNotifiedEpisode, &a.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan anime: %w", err)
 		}
 		animes = append(animes, a)
@@ -27,8 +27,8 @@ func ListAnimes(db *sql.DB) ([]model.Anime, error) {
 
 func GetAnimeByVodID(db *sql.DB, vodID int) (*model.Anime, error) {
 	var a model.Anime
-	err := db.QueryRow(`SELECT id, vod_id, name, cover, current_remarks, last_notified_remarks, created_at FROM animes WHERE vod_id = ?`, vodID).Scan(
-		&a.ID, &a.VodID, &a.Name, &a.Cover, &a.CurrentRemarks, &a.LastNotifiedRemarks, &a.CreatedAt,
+	err := db.QueryRow(`SELECT id, vod_id, name, cover, current_remarks, last_notified_remarks, last_notified_episode, created_at FROM animes WHERE vod_id = ?`, vodID).Scan(
+		&a.ID, &a.VodID, &a.Name, &a.Cover, &a.CurrentRemarks, &a.LastNotifiedRemarks, &a.LastNotifiedEpisode, &a.CreatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -40,7 +40,7 @@ func GetAnimeByVodID(db *sql.DB, vodID int) (*model.Anime, error) {
 }
 
 func CreateAnime(db *sql.DB, a *model.Anime) error {
-	_, err := db.Exec(`INSERT INTO animes (vod_id, name, cover, current_remarks, last_notified_remarks) VALUES (?, ?, ?, ?, '')`,
+	_, err := db.Exec(`INSERT INTO animes (vod_id, name, cover, current_remarks, last_notified_remarks, last_notified_episode) VALUES (?, ?, ?, ?, '', 0)`,
 		a.VodID, a.Name, a.Cover, a.CurrentRemarks,
 	)
 	return err
@@ -51,9 +51,11 @@ func DeleteAnime(db *sql.DB, id int64) error {
 	return err
 }
 
-func UpdateAnimeRemarks(db *sql.DB, id int64, currentRemarks, lastNotifiedRemarks string) error {
-	_, err := db.Exec(`UPDATE animes SET current_remarks = ?, last_notified_remarks = ? WHERE id = ?`,
-		currentRemarks, lastNotifiedRemarks, id,
+// UpdateAnimeRemarks 推送成功后写入基线：current_remarks 同步最新抓取值（展示用），
+// last_notified_remarks / last_notified_episode 为判定基线。
+func UpdateAnimeRemarks(db *sql.DB, id int64, currentRemarks, lastNotifiedRemarks string, lastNotifiedEpisode int) error {
+	_, err := db.Exec(`UPDATE animes SET current_remarks = ?, last_notified_remarks = ?, last_notified_episode = ? WHERE id = ?`,
+		currentRemarks, lastNotifiedRemarks, lastNotifiedEpisode, id,
 	)
 	return err
 }

@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -27,6 +28,7 @@ func migrate(db *sql.DB) error {
 			cover TEXT NOT NULL DEFAULT '',
 			current_remarks TEXT NOT NULL DEFAULT '',
 			last_notified_remarks TEXT NOT NULL DEFAULT '',
+			last_notified_episode INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		);
 
@@ -35,5 +37,14 @@ func migrate(db *sql.DB) error {
 			value TEXT NOT NULL DEFAULT ''
 		);
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// 老库补列（幂等）：SQLite 无 ADD COLUMN IF NOT EXISTS，靠捕获 duplicate column 错误忽略。
+	_, err = db.Exec(`ALTER TABLE animes ADD COLUMN last_notified_episode INTEGER NOT NULL DEFAULT 0`)
+	if err != nil && !strings.Contains(err.Error(), "duplicate column") {
+		return err
+	}
+	return nil
 }
