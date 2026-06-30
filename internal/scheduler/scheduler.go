@@ -2,7 +2,9 @@ package scheduler
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
+	"sync"
 
 	"github.com/robfig/cron/v3"
 	"github.com/user/anime-tip/internal/crawler"
@@ -14,6 +16,7 @@ type Scheduler struct {
 	db      *sql.DB
 	crawler *crawler.Client
 	cron    *cron.Cron
+	mu      sync.Mutex
 }
 
 func New(db *sql.DB, crawler *crawler.Client) *Scheduler {
@@ -41,6 +44,12 @@ func (s *Scheduler) Stop() {
 
 // CheckUpdates 检查所有关注动漫的更新，推送变化
 func (s *Scheduler) CheckUpdates() error {
+	// 防止并发执行（手动触发 + 定时触发叠加、多次点击）
+	if !s.mu.TryLock() {
+		return fmt.Errorf("检查任务正在执行中，请稍后再试")
+	}
+	defer s.mu.Unlock()
+
 	animes, err := store.ListAnimes(s.db)
 	if err != nil {
 		return err
@@ -75,13 +84,14 @@ func (s *Scheduler) CheckUpdates() error {
 			})
 		}
 
-		// 无论是否有变化，都更新 current_remarks；如果上次推送的 remarks 为空（首次关注），不触发通知
+		// 无论是否有变化，都同步 current_remarks；如果上次推送的 remarks 为空（首次关注），不触发通知。
+		// 注意：last_notified_remarks 在发生更新时应推进到 latestRemarks，否则下一轮会因 latest != last_notified 永远成立而重复推送。
 		if latestRemarks != a.CurrentRemarks || a.LastNotifiedRemarks != a.CurrentRemarks {
 			toUpdate = append(toUpdate, struct {
 				id                  int64
 				currentRemarks      string
 				lastNotifiedRemarks string
-			}{a.ID, latestRemarks, a.CurrentRemarks})
+			}{a.ID, latestRemarks, latestRemarks})
 		}
 	}
 
