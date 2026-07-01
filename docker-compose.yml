@@ -1,7 +1,7 @@
 # docker-compose.yml
 name: anime-tip
 services:
-  app:
+  anime-tip:
     build: .
     ports:
       - "8484:8484"
