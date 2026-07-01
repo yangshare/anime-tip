@@ -4,6 +4,7 @@ import (
 	"flag"
 	"io"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 
@@ -69,8 +70,47 @@ func main() {
 	h := web.NewHandler(db, cr, sched)
 	r := web.SetupRouter(h)
 
-	log.Printf("anime-tip 已启动，监听 :%s", cfg.Port)
+	log.Printf("anime-tip 已启动（监听 :%s），可通过以下地址访问：", cfg.Port)
+	log.Printf("  本机：   http://localhost:%s", cfg.Port)
+	for _, ip := range localIPv4s() {
+		log.Printf("  局域网： http://%s:%s", ip, cfg.Port)
+	}
 	if err := r.Run(":" + cfg.Port); err != nil {
 		log.Fatalf("启动 HTTP 服务失败: %v", err)
 	}
+}
+
+// localIPv4s 返回本机所有非回环的 IPv4 地址，用于在启动日志中输出局域网访问地址。
+func localIPv4s() []string {
+	var ips []string
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return ips
+	}
+	for _, iface := range ifaces {
+		// 跳过未启用或回环接口
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.IsLoopback() {
+				continue
+			}
+			if v4 := ip.To4(); v4 != nil {
+				ips = append(ips, v4.String())
+			}
+		}
+	}
+	return ips
 }
