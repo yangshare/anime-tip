@@ -87,3 +87,42 @@ func TestListAnimes_returnsEpisode(t *testing.T) {
 		t.Fatalf("期望 1 条且 episode=7，得到 %+v", got)
 	}
 }
+
+// migrate 应建出 play_url 列。
+func TestMigrate_addsPlayURLColumn(t *testing.T) {
+	db := newTestDB(t)
+
+	var hasCol bool
+	err := db.QueryRow(`SELECT COUNT(*) > 0 FROM pragma_table_info('animes') WHERE name='play_url'`).Scan(&hasCol)
+	if err != nil {
+		t.Fatalf("查询列: %v", err)
+	}
+	if !hasCol {
+		t.Fatal("期望 animes 表存在 play_url 列")
+	}
+}
+
+// UpdateAnimePlayURL 应写入 play_url，且能被 ListAnimes 回填。
+func TestUpdateAnimePlayURL_writesURL(t *testing.T) {
+	db := newTestDB(t)
+	if _, err := db.Exec(`INSERT INTO animes (vod_id, name, current_remarks, last_notified_remarks) VALUES (1, '测试番', '', '')`); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	var id int64
+	if err := db.QueryRow(`SELECT id FROM animes WHERE vod_id=1`).Scan(&id); err != nil {
+		t.Fatalf("查 id: %v", err)
+	}
+
+	if err := UpdateAnimePlayURL(db, id, "https://example.com/play/1"); err != nil {
+		t.Fatalf("UpdateAnimePlayURL: %v", err)
+	}
+
+	got, err := GetAnimeByVodID(db, 1)
+	if err != nil {
+		t.Fatalf("GetAnimeByVodID: %v", err)
+	}
+	if got.PlayURL != "https://example.com/play/1" {
+		t.Errorf("PlayURL 期望 https://example.com/play/1，得到 %q", got.PlayURL)
+	}
+}

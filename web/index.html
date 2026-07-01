@@ -30,10 +30,23 @@
       <div class="card">
         <img :src="a.cover || '/static/placeholder.png'" :alt="a.name">
         <div class="card-info">
-          <h3 x-text="a.name"></h3>
+          <h3>
+            <a x-show="a.play_url" :href="a.play_url" target="_blank" rel="noopener noreferrer" x-text="a.name" class="play-link"></a>
+            <span x-show="!a.play_url" x-text="a.name"></span>
+            <span x-show="!a.play_url" class="no-url-hint">未配置播放地址</span>
+          </h3>
           <p x-text="'当前：' + (a.current_remarks || '未知')"></p>
+          <!-- 编辑播放地址（单卡片编辑态） -->
+          <div class="play-edit" x-show="editingId === a.id">
+            <input type="text" x-model="editDraft" placeholder="https://... 播放地址" @keydown.enter="savePlayURL(a)" @keydown.escape="cancelEdit">
+            <button class="btn-save" @click="savePlayURL(a)" :disabled="savingUrl" x-text="savingUrl ? '保存中...' : '保存'"></button>
+            <button class="btn-cancel" @click="cancelEdit">取消</button>
+          </div>
         </div>
-        <button class="btn-remove" @click="removeAnime(a.id)">取消关注</button>
+        <div class="card-actions">
+          <button class="btn-edit" @click="startEdit(a)" x-show="editingId !== a.id">编辑</button>
+          <button class="btn-remove" @click="removeAnime(a.id)">取消关注</button>
+        </div>
       </div>
     </template>
   </div>
@@ -95,6 +108,9 @@ function app() {
     testingNotify: false,
     notifyResult: '',
     notifyOk: false,
+    editingId: null,
+    editDraft: '',
+    savingUrl: false,
 
     async init() {
       await this.loadAnimes();
@@ -146,6 +162,45 @@ function app() {
       if (!confirm('确定取消关注？')) return;
       await fetch('/api/animes/' + id, { method: 'DELETE' });
       await this.loadAnimes();
+    },
+
+    startEdit(a) {
+      this.editingId = a.id;
+      this.editDraft = a.play_url || '';
+    },
+
+    cancelEdit() {
+      this.editingId = null;
+      this.editDraft = '';
+    },
+
+    async savePlayURL(a) {
+      const url = this.editDraft.trim();
+      if (url && !/^https?:\/\//i.test(url)) {
+        alert('播放地址必须以 http:// 或 https:// 开头');
+        return;
+      }
+      this.savingUrl = true;
+      try {
+        const res = await fetch('/api/animes/' + a.id, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ play_url: url }),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          alert(err.error || '保存失败');
+          return;
+        }
+        const data = await res.json();
+        a.play_url = data.data.play_url;
+        this.editingId = null;
+        this.editDraft = '';
+      } catch (e) {
+        alert('请求失败: ' + e.message);
+      } finally {
+        this.savingUrl = false;
+      }
     },
 
     async loadSettings() {

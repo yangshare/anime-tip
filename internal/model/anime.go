@@ -15,6 +15,7 @@ type Anime struct {
 	CurrentRemarks      string    `json:"current_remarks"`
 	LastNotifiedRemarks string    `json:"last_notified_remarks"`
 	LastNotifiedEpisode int       `json:"last_notified_episode"`
+	PlayURL             string    `json:"play_url"`
 	CreatedAt           time.Time `json:"created_at"`
 }
 

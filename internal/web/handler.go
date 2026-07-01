@@ -40,6 +40,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	{
 		api.GET("/animes", h.ListAnimes)
 		api.POST("/animes", h.CreateAnime)
+		api.PATCH("/animes/:id", h.UpdateAnime)
 		api.DELETE("/animes/:id", h.DeleteAnime)
 
 		api.GET("/search", h.Search)
