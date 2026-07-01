@@ -88,6 +88,17 @@
       </div>
       <p class="test-result" x-show="notifyResult" :class="notifyOk ? 'success' : 'fail'" x-text="notifyResult"></p>
     </div>
+    <div class="setting-group backup-group">
+      <label>数据备份</label>
+      <div class="backup-row">
+        <button class="btn-test" @click="exportFollows()" :disabled="exporting" x-text="exporting ? '导出中...' : '导出关注列表'"></button>
+      </div>
+      <div class="backup-row">
+        <input type="file" accept=".json,application/json" @change="onImportFilePicked($event)" :disabled="importing">
+        <button class="btn-test" @click="importFollows()" :disabled="importing || !importPayload" x-text="importing ? '导入中...' : '导入关注列表'"></button>
+      </div>
+      <p class="import-result" x-show="importResult" x-text="importResult"></p>
+    </div>
     <button class="btn-primary" @click="saveSettings">保存设置</button>
   </div>
 
@@ -111,6 +122,10 @@ function app() {
     editingId: null,
     editDraft: '',
     savingUrl: false,
+    exporting: false,
+    importing: false,
+    importResult: '',
+    importPayload: null,
 
     async init() {
       await this.loadAnimes();
@@ -251,6 +266,90 @@ function app() {
         this.notifyResult = '❌ 请求失败: ' + e.message;
       } finally {
         this.testingNotify = false;
+      }
+    },
+
+    async exportFollows() {
+      this.exporting = true;
+      try {
+        const res = await fetch('/api/animes/export');
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.error || '导出失败');
+          return;
+        }
+        const blob = await res.blob();
+        // 文件名优先取响应头 Content-Disposition，回退到默认
+        let filename = 'anime-tip-follows.json';
+        const disp = res.headers.get('Content-Disposition') || '';
+        const m = disp.match(/filename="?([^"]+)"?/);
+        if (m) filename = m[1];
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        alert('导出请求失败: ' + e.message);
+      } finally {
+        this.exporting = false;
+      }
+    },
+
+    onImportFilePicked(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) {
+        this.importPayload = null;
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const obj = JSON.parse(reader.result);
+          this.importPayload = obj;
+          this.importResult = '';
+        } catch (e) {
+          this.importPayload = null;
+          this.importResult = '❌ 文件格式不正确，请选择导出的 JSON 文件';
+          alert('文件格式不正确');
+        }
+      };
+      reader.onerror = () => {
+        this.importPayload = null;
+        this.importResult = '❌ 读取文件失败';
+      };
+      reader.readAsText(file);
+    },
+
+    async importFollows() {
+      if (!this.importPayload) return;
+      this.importing = true;
+      try {
+        const res = await fetch('/api/animes/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.importPayload),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          this.importResult = '❌ ' + (data.error || '导入失败');
+          return;
+        }
+        let msg = '✅ 已导入 ' + data.imported + ' 条，跳过 ' + data.skipped + ' 条';
+        if (data.errors && data.errors.length > 0) {
+          const shown = data.errors.slice(0, 5).map(e => '第 ' + (e.index + 1) + ' 条：' + e.error).join('；');
+          const more = data.errors.length > 5 ? '（等共 ' + data.errors.length + ' 条错误）' : '';
+          msg += '；失败：' + shown + more;
+        }
+        this.importResult = msg;
+        await this.loadAnimes();
+      } catch (e) {
+        this.importResult = '❌ 请求失败: ' + e.message;
+      } finally {
+        this.importing = false;
       }
     },
   };

@@ -213,3 +213,30 @@ input:focus { border-color: #8b5cf6; }
 }
 .test-result.success { background: #064e3b; color: #6ee7b7; }
 .test-result.fail { background: #450a0a; color: #fca5a5; }
+
+.backup-group .backup-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.backup-group input[type="file"] {
+  flex: 1;
+  font-size: 13px;
+  padding: 6px;
+  background: #1a1a2e;
+  border: 1px solid #2a2a3e;
+  border-radius: 8px;
+  color: #e0e0e0;
+}
+
+.import-result {
+  font-size: 13px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  word-break: break-all;
+}
