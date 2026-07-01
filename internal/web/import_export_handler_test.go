@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/user/anime-tip/internal/store"
 )
 
 // seedAnimeFull 直接插一条带基线/主键/play_url 的全字段记录，
@@ -135,5 +137,156 @@ func TestExportAnimes_emptyList(t *testing.T) {
 	}
 	if got.Animes == nil || len(got.Animes) != 0 {
 		t.Errorf("animes = %v, 期望非 null 空数组", got.Animes)
+	}
+}
+
+// callImport 构造一个挂载 ImportAnimes 的 gin 上下文，POST jsonBody，返回状态码与解析后的 body。
+func callImport(t *testing.T, h *Handler, jsonBody string) (code int, body map[string]any) {
+	t.Helper()
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/animes/import", strings.NewReader(jsonBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h.ImportAnimes(c)
+
+	code = w.Code
+	_ = json.Unmarshal(w.Body.Bytes(), &body)
+	return
+}
+
+// ImportAnimes 合法批（含一条已存在）→ 200，imported/skipped 正确，且不覆盖已存在条本地 play_url。
+func TestImportAnimes_validBatch(t *testing.T) {
+	h := newTestHandlerDB(t)
+	seedAnimeFull(t, h.db, 100, "已存在番", "https://keep/100")
+
+	body := `{"version":1,"exported_at":"2026-07-01T12:00:00Z","animes":[
+		{"vod_id":100,"name":"已存在-导入侧","cover":"","play_url":"https://overwrite/100"},
+		{"vod_id":200,"name":"全新番","cover":"https://c/200","play_url":"https://play/200"}
+	]}`
+	code, resp := callImport(t, h, body)
+	if code != http.StatusOK {
+		t.Fatalf("状态码 = %d, 期望 200, body=%v", code, resp)
+	}
+	if got := int(resp["imported"].(float64)); got != 1 {
+		t.Errorf("imported = %d, 期望 1", got)
+	}
+	if got := int(resp["skipped"].(float64)); got != 1 {
+		t.Errorf("skipped = %d, 期望 1", got)
+	}
+	if errs, ok := resp["errors"].([]any); ok && len(errs) != 0 {
+		t.Errorf("errors = %v, 期望空", errs)
+	}
+
+	// 已存在条本地 play_url 不被覆盖
+	existing, _ := store.GetAnimeByVodID(h.db, 100)
+	if existing.PlayURL != "https://keep/100" {
+		t.Errorf("已存在条 play_url = %q, 期望保持 https://keep/100", existing.PlayURL)
+	}
+}
+
+// ImportAnimes version 非 1 → 400。
+func TestImportAnimes_unsupportedVersion(t *testing.T) {
+	h := newTestHandlerDB(t)
+	body := `{"version":2,"exported_at":"","animes":[]}`
+	code, resp := callImport(t, h, body)
+	if code != http.StatusBadRequest {
+		t.Fatalf("状态码 = %d, 期望 400", code)
+	}
+	if !strings.Contains(resp["error"].(string), "版本") {
+		t.Errorf("error = %v, 期望含 '版本'", resp["error"])
+	}
+}
+
+// version 缺省应视为 1，正常导入。
+func TestImportAnimes_missingVersionTreatedAs1(t *testing.T) {
+	h := newTestHandlerDB(t)
+	body := `{"animes":[{"vod_id":999,"name":"无版本字段番","cover":"","play_url":""}]}`
+	code, resp := callImport(t, h, body)
+	if code != http.StatusOK {
+		t.Fatalf("状态码 = %d, 期望 200, body=%v", code, resp)
+	}
+	if got := int(resp["imported"].(float64)); got != 1 {
+		t.Errorf("imported = %d, 期望 1", got)
+	}
+}
+
+// 数组超上限 2000 → 400。
+func TestImportAnimes_overLimit(t *testing.T) {
+	h := newTestHandlerDB(t)
+	var sb strings.Builder
+	sb.WriteString(`{"version":1,"animes":[`)
+	for i := 0; i < 2001; i++ {
+		if i > 0 {
+			sb.WriteByte(',')
+		}
+		sb.WriteString(`{"vod_id":`)
+		sb.WriteString(strconv.Itoa(i + 1))
+		sb.WriteString(`,"name":"n","cover":"","play_url":""}`)
+	}
+	sb.WriteString(`]}`)
+
+	code, resp := callImport(t, h, sb.String())
+	if code != http.StatusBadRequest {
+		t.Fatalf("状态码 = %d, 期望 400", code)
+	}
+	if !strings.Contains(resp["error"].(string), "2000") {
+		t.Errorf("error = %v, 期望含 '2000'", resp["error"])
+	}
+}
+
+// ImportAnimes 含逐条非法条（name 空 / vod_id≤0 / play_url 非法）→ 该条进 errors，其余正常导入。
+func TestImportAnimes_perItemValidation(t *testing.T) {
+	h := newTestHandlerDB(t)
+	body := `{"version":1,"animes":[
+		{"vod_id":1,"name":"","cover":"","play_url":""},
+		{"vod_id":0,"name":"零id","cover":"","play_url":""},
+		{"vod_id":-5,"name":"负id","cover":"","play_url":""},
+		{"vod_id":2,"name":"非法url","cover":"","play_url":"ftp://x"},
+		{"vod_id":3,"name":"合法番","cover":"","play_url":"https://play/3"}
+	]}`
+	code, resp := callImport(t, h, body)
+	if code != http.StatusOK {
+		t.Fatalf("状态码 = %d, 期望 200, body=%v", code, resp)
+	}
+	if got := int(resp["imported"].(float64)); got != 1 {
+		t.Errorf("imported = %d, 期望 1（仅 vod_id=3 合法）", got)
+	}
+	errs, _ := resp["errors"].([]any)
+	if len(errs) != 4 {
+		t.Fatalf("errors 长度 = %d, 期望 4, 实际 %v", len(errs), errs)
+	}
+	// 校验每条 error 的 index 与 vod_id
+	wantIndices := map[int]int{0: 1, 1: 0, 2: -5, 3: 2}
+	gotIndices := map[int]int{}
+	for _, e := range errs {
+		em, _ := e.(map[string]any)
+		idx := int(em["index"].(float64))
+		vid := int(em["vod_id"].(float64))
+		gotIndices[idx] = vid
+	}
+	for idx, vid := range wantIndices {
+		if gotIndices[idx] != vid {
+			t.Errorf("index=%d 的 vod_id = %d, 期望 %d", idx, gotIndices[idx], vid)
+		}
+	}
+	// 非法条不应入库
+	if a, _ := store.GetAnimeByVodID(h.db, 2); a != nil {
+		t.Error("vod_id=2（非法url）不应入库")
+	}
+	if a, _ := store.GetAnimeByVodID(h.db, 3); a == nil {
+		t.Error("vod_id=3（合法）应入库")
+	}
+}
+
+// ImportAnimes 请求体非合法 JSON → 400。
+func TestImportAnimes_badJSON(t *testing.T) {
+	h := newTestHandlerDB(t)
+	code, resp := callImport(t, h, `{not json`)
+	if code != http.StatusBadRequest {
+		t.Fatalf("状态码 = %d, 期望 400", code)
+	}
+	if !strings.Contains(resp["error"].(string), "格式") {
+		t.Errorf("error = %v, 期望含 '格式'", resp["error"])
 	}
 }
