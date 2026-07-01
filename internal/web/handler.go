@@ -43,6 +43,9 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 		api.PATCH("/animes/:id", h.UpdateAnime)
 		api.DELETE("/animes/:id", h.DeleteAnime)
 
+		api.GET("/animes/export", h.ExportAnimes)
+		api.POST("/animes/import", h.ImportAnimes)
+
 		api.GET("/search", h.Search)
 
 		api.GET("/settings", h.ListSettings)

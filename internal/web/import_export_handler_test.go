@@ -290,3 +290,68 @@ func TestImportAnimes_badJSON(t *testing.T) {
 		t.Errorf("error = %v, 期望含 '格式'", resp["error"])
 	}
 }
+
+// TestImportExportRoundTrip：导出 → 清库 → 导入 → 关注清单还原（vod_id/name/cover/play_url 一致，基线重置为默认）。
+func TestImportExportRoundTrip(t *testing.T) {
+	h := newTestHandlerDB(t)
+	seedAnimeFull(t, h.db, 111, "番A", "https://play/a")
+	seedAnimeFull(t, h.db, 222, "番B", "")
+
+	// 导出
+	_, exportBody, _ := callExport(t, h)
+
+	// 清库
+	if _, err := h.db.Exec(`DELETE FROM animes`); err != nil {
+		t.Fatalf("清库: %v", err)
+	}
+
+	// 用导出内容原样导入
+	code, resp := callImport(t, h, string(exportBody))
+	if code != http.StatusOK {
+		t.Fatalf("导入状态码 = %d, 期望 200, body=%v", code, resp)
+	}
+	if got := int(resp["imported"].(float64)); got != 2 {
+		t.Errorf("imported = %d, 期望 2", got)
+	}
+
+	// 还原校验
+	a111, _ := store.GetAnimeByVodID(h.db, 111)
+	if a111 == nil {
+		t.Fatal("vod_id=111 未还原")
+	}
+	if a111.Name != "番A" || a111.Cover != "https://c/番A" || a111.PlayURL != "https://play/a" {
+		t.Errorf("111 还原不一致: %+v", a111)
+	}
+	// 基线应被重置为默认（导出文件不含基线，导入后重新关注）
+	if a111.CurrentRemarks != "" || a111.LastNotifiedRemarks != "" || a111.LastNotifiedEpisode != 0 {
+		t.Errorf("111 基线未重置: %+v", a111)
+	}
+
+	a222, _ := store.GetAnimeByVodID(h.db, 222)
+	if a222 == nil {
+		t.Fatal("vod_id=222 未还原")
+	}
+	if a222.Name != "番B" || a222.PlayURL != "" {
+		t.Errorf("222 还原不一致: %+v", a222)
+	}
+}
+
+// 路由注册：SetupRouter 后 GET /api/animes/export 与 POST /api/animes/import 应可达。
+func TestRoutes_exportAndImportRegistered(t *testing.T) {
+	h := newTestHandlerDB(t)
+	r := SetupRouter(h)
+
+	// 导出
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/animes/export", nil))
+	if w.Code != http.StatusOK {
+		t.Errorf("GET /api/animes/export 状态码 = %d, 期望 200", w.Code)
+	}
+
+	// 导入空批
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, httptest.NewRequest(http.MethodPost, "/api/animes/import", strings.NewReader(`{"version":1,"animes":[]}`)))
+	if w2.Code != http.StatusOK {
+		t.Errorf("POST /api/animes/import 状态码 = %d, 期望 200", w2.Code)
+	}
+}
